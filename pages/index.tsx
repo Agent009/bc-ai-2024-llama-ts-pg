@@ -42,37 +42,81 @@ export default function Home() {
   useEffect(() => {
     // Set the worker source. This tells PDF.js where to find the worker script, which is necessary for processing PDFs.
     // We're using a CDN to load the worker script. The version is dynamically set based on the version of PDF.js you're using.
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.min.mjs`;
+    const loadPdfWorker = async () => {
+      try {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.min.mjs`;
+        await pdfjsLib.getDocument({ data: new Uint8Array() }).promise;
+        console.log("PDF.js worker initialized successfully");
+      } catch (error) {
+        console.error("Error initializing PDF.js worker:", error);
+      }
+    };
+
+    loadPdfWorker();
   }, []);
 
   const handleFileUpload = async (file: File) => {
-    setIsLoading(true); // Start loading
-    if (file.type === 'application/pdf') {
-      console.log("index -> handleFileUpload -> pdf document detected");
-      const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      console.log("index -> handleFileUpload -> pdf document fetched");
-      let fullText = '';
+    setIsLoading(true);
+    try {
+      if (file.type === 'application/pdf') {
+        console.log("index -> handleFileUpload -> pdf document detected");
+        const arrayBuffer = await file.arrayBuffer();
+        console.log("index -> handleFileUpload -> arrayBuffer created");
+        
+        const loadingTask = pdfjsLib.getDocument({
+          data: arrayBuffer,
+          password: '',
+          nativeImageDecoderSupport: 'none',
+          disableFontFace: true,
+        });
+        console.log("index -> handleFileUpload -> loadingTask created");
 
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items.map((item: any) => item.str).join(' ');
-        fullText += pageText + '\n';
-      console.log(`index -> handleFileUpload -> pdf -> fullText fetched for page ${i} / ${pdf.numPages}...`);
+        loadingTask.onProgress = (progressData: any) => {
+          console.log(`Loading PDF: ${(progressData.loaded / progressData.total * 100).toFixed(2)}%`);
+        };
+        
+        try {
+          const pdf = await Promise.race([
+            loadingTask.promise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error('PDF loading timed out')), 30000)) // Increased timeout to 30 seconds
+          ]);
+          console.log("index -> handleFileUpload -> pdf document fetched");
+          
+          let fullText = '';
+
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items.map((item: any) => item.str).join(' ');
+            fullText += pageText + '\n';
+            console.log(`index -> handleFileUpload -> pdf -> fullText fetched for page ${i} / ${pdf.numPages}...`);
+          }
+          setText(fullText);
+        } catch (pdfError) {
+          console.error("Error loading PDF:", pdfError);
+          if (pdfError instanceof Error && pdfError.name === 'PasswordException') {
+            setAnswer("Error: This PDF is password-protected. Please provide an unprotected PDF.");
+          } else {
+            setAnswer(`Error loading PDF: ${pdfError instanceof Error ? pdfError.message : 'Unknown error'}`);
+          }
+          return;
+        }
+      } else {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const content = event.target?.result as string;
+          console.log("index -> handleFileUpload -> non-pdf document text fetched");
+          setText(content);
+        };
+        reader.readAsText(file);
       }
-      setText(fullText);
-    } else {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const content = event.target?.result as string;
-        console.log("index -> handleFileUpload -> non-pdf document text fetched");
-        setText(content);
-      };
-      reader.readAsText(file);
+    } catch (error) {
+      console.error("Error in handleFileUpload:", error);
+      setAnswer(`Error processing file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsLoading(false);
+      setNeedsNewIndex(true);
     }
-    setIsLoading(false); // Stop loading
-    setNeedsNewIndex(true);
   };
 
   return (
@@ -93,9 +137,13 @@ export default function Home() {
                 type="file"
                 accept=".txt,.md,.pdf"
                 onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                  console.log("File input changed");
                   const file = e.target.files?.[0];
                   if (file) {
+                    console.log("File selected:", file.name, file.type);
                     handleFileUpload(file);
+                  } else {
+                    console.log("No file selected");
                   }
                 }}
                 className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 h-auto py-2"
