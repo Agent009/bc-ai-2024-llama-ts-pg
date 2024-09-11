@@ -1,12 +1,23 @@
 {
-  "name": "playground",
+  "name": "llama-ts-playground",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "NODE_TLS_REJECT_UNAUTHORIZED=0 next dev",
+    "format": "prettier --check \"**/*.[jt]s?(x)\"",
+    "format:fix": "prettier --write \"**/*.[jt]s?(x)\"",
+    "lint": "eslint ./src",
+    "lint:fix": "eslint ./src --fix",
+    "typecheck": "tsc --noEmit",
     "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+    "build:local": "NEXT_PUBLIC_APP_ENV=local next build",
+    "build:dev": "NEXT_PUBLIC_APP_ENV=dev next build",
+    "build:prod": "NEXT_PUBLIC_APP_ENV=prod next build",
+    "deploy:local": "npm run build:local && pm2 start pm2.config.js --env local --no-daemon",
+    "deploy:dev": "npm run build:dev && pm2 start pm2.config.js --env dev",
+    "deploy:prod": "npm run build:prod && pm2 start pm2.config.js --env prod",
+    "vercel:deploy": "vercel build --prod && vercel deploy --prebuilt",
+    "dev": "next dev -p 3091",
+    "start": "next start -p 3091"
   },
   "dependencies": {
     "@radix-ui/react-icons": "^1.3.0",
@@ -22,9 +33,12 @@
     "clsx": "^2.0.0",
     "eslint": "8.53.0",
     "eslint-config-next": "13.5.3",
+    "husky": "^9.0.11",
+    "lint-staged": "^15.2.2",
     "llamaindex": "0.0.34",
     "lucide-react": "^0.263.1",
     "next": "13.5.3",
+    "pdfjs-dist": "^4.6.82",
     "postcss": "8.4.30",
     "react": "18.2.0",
     "react-dom": "18.2.0",
@@ -37,5 +51,15 @@
     "prettier": "^3.0.3",
     "prettier-plugin-organize-imports": "^3.2.3",
     "prettier-plugin-tailwindcss": "^0.5.6"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged"
+    }
+  },
+  "lint-staged": {
+    "src/**/*.{js,jsx,ts,tsx,json,css,scss,md}": [
+      "prettier --write \"**/*.[jt]s?(x)\""
+    ]
   }
 }
