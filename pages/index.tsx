@@ -44,8 +44,8 @@ export default function Home() {
     // We're using a CDN to load the worker script. The version is dynamically set based on the version of PDF.js you're using.
     const loadPdfWorker = async () => {
       try {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.min.mjs`;
-        await pdfjsLib.getDocument({ data: new Uint8Array() }).promise;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.mjs`;
+        // await pdfjsLib.getDocument({ data: new Uint8Array() }).promise;
         console.log("PDF.js worker initialized successfully");
       } catch (error) {
         console.error("Error initializing PDF.js worker:", error);
@@ -56,31 +56,33 @@ export default function Home() {
   }, []);
 
   const handleFileUpload = async (file: File) => {
+    // console.log("index -> handleFileUpload -> file", file);
     setIsLoading(true);
     try {
       if (file.type === 'application/pdf') {
         console.log("index -> handleFileUpload -> pdf document detected");
         const arrayBuffer = await file.arrayBuffer();
-        console.log("index -> handleFileUpload -> arrayBuffer created");
+        // console.log("index -> handleFileUpload -> arrayBuffer created");
         
         const loadingTask = pdfjsLib.getDocument({
           data: arrayBuffer,
           password: '',
           nativeImageDecoderSupport: 'none',
           disableFontFace: true,
+          pdfBug: true,
         });
-        console.log("index -> handleFileUpload -> loadingTask created");
+        // console.log("index -> handleFileUpload -> loadingTask created");
 
         loadingTask.onProgress = (progressData: any) => {
-          console.log(`Loading PDF: ${(progressData.loaded / progressData.total * 100).toFixed(2)}%`);
+          console.log(`index -> handleFileUpload -> loadingTask -> loading PDF: ${(progressData.loaded / progressData.total * 100).toFixed(2)}%`);
         };
         
         try {
           const pdf = await Promise.race([
             loadingTask.promise,
-            new Promise((_, reject) => setTimeout(() => reject(new Error('PDF loading timed out')), 30000)) // Increased timeout to 30 seconds
+            new Promise((_, reject) => setTimeout(() => reject(new Error('PDF loading timed out')), 10000)) // Timeout after 10 seconds
           ]);
-          console.log("index -> handleFileUpload -> pdf document fetched");
+          // console.log("index -> handleFileUpload -> pdf document fetched");
           
           let fullText = '';
 
@@ -167,7 +169,7 @@ export default function Home() {
           </div>
         </div>
         <div className="space-y-4">
-          <h2 className="text-2xl font-bold">Settings</h2>
+          <h2 className="text-2xl font-bold">Build Index</h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <LinkedSlider
@@ -254,7 +256,7 @@ export default function Home() {
           {buildingIndex ? "Building Vector index..." : "Build index"}
         </Button>
 
-        {!buildingIndex && !needsNewIndex && !runningQuery && (
+        {!buildingIndex && !needsNewIndex && (
           <>
             <h2 className="text-2xl font-bold mt-6 mb-4">Query</h2>
             <div className="my-2 grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -316,11 +318,13 @@ export default function Home() {
                   }}
                   placeholder="Enter your query here"
                   className="flex-grow max-w-2xl"
+                  disabled={isLoading || runningQuery}
                 />
                 <Button
                   type="submit"
                   disabled={needsNewIndex || buildingIndex || runningQuery}
                   onClick={async () => {
+                    setIsLoading(true);
                     setAnswer("Running query...");
                     setRunningQuery(true);
                     // Post the query and nodesWithEmbedding to the server
@@ -349,11 +353,17 @@ export default function Home() {
                     }
 
                     setRunningQuery(false);
+                    setIsLoading(false);
                   }}
                 >
                   Query
                 </Button>
               </div>
+              {isLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-background/50">
+                <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+              )}
             </div>
             <div className="my-2 flex h-1/4 flex-auto flex-col space-y-2">
               <Textarea
